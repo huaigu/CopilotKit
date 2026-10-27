@@ -1,0 +1,10 @@
+.next/
+.next-e2e/
+.pi-data/
+.pi-data-e2e/
+test-results/
+playwright-report/
+.env.local
+node_modules/
+*.tsbuildinfo
+next-env.d.ts

@@ -1,0 +1,41 @@
+{
+  "name": "pi-agent-example",
+  "projectType": "application",
+  "sourceRoot": "examples/v2/react/pi-agent/src",
+  "targets": {
+    "dev": {
+      "executor": "nx:run-commands",
+      "dependsOn": [],
+      "options": {
+        "command": "next dev --hostname 127.0.0.1 --port 3010",
+        "cwd": "examples/v2/react/pi-agent"
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "dependsOn": [],
+      "outputs": ["{projectRoot}/.next"],
+      "options": {
+        "command": "next build",
+        "cwd": "examples/v2/react/pi-agent"
+      }
+    },
+    "check-types": {
+      "executor": "nx:run-commands",
+      "dependsOn": [],
+      "options": {
+        "command": "tsc --noEmit",
+        "cwd": "examples/v2/react/pi-agent"
+      }
+    },
+    "e2e": {
+      "executor": "nx:run-commands",
+      "dependsOn": [],
+      "cache": false,
+      "options": {
+        "command": "playwright test",
+        "cwd": "examples/v2/react/pi-agent"
+      }
+    }
+  }
+}

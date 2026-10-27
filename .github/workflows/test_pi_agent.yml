@@ -1,0 +1,35 @@
+name: test / Pi Agent example
+
+on:
+  pull_request:
+    paths:
+      - "packages/pi-agent/**"
+      - "examples/v2/react/pi-agent/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/test_pi_agent.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NX_DAEMON: "false"
+      NEXT_TELEMETRY_DISABLED: "1"
+      COPILOTKIT_TELEMETRY_DISABLED: "true"
+      NODE_OPTIONS: "--max-old-space-size=4096"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm nx run-many -t build,check-types,test --projects=@copilotkit/pi-agent --parallel=1
+      - run: pnpm nx run pi-agent-example:build
+      - run: pnpm --dir examples/v2/react/pi-agent exec playwright install --with-deps chromium
+      - run: pnpm nx run pi-agent-example:e2e

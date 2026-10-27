@@ -164,6 +164,7 @@ jobs:
         # avoid template-injection — base_ref is attacker-influenceable.
         env:
           EVENT_NAME: ${{ github.event_name }}
+          TEST_NODE_VERSION: ${{ matrix.node-version }}
           BASE_REF: ${{ github.base_ref }}
           BEFORE_SHA: ${{ github.event.before }}
         run: |
@@ -220,7 +221,9 @@ jobs:
           else
             PROJECTS=$(npx nx show projects --affected --base="$NX_BASE" --head="$NX_HEAD" --projects='packages/**' --exclude=@copilotkit/demo-agents,runtime-python,runtime-go,runtime-ruby,runtime-dotnet,intelligence-delivery-python-core,intelligence-langgraph-python,intelligence-adk-python,intelligence-agent-framework-dotnet -t test --json)
           fi
-          LIST=$(printf '%s' "$PROJECTS" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>process.stdout.write(JSON.parse(d).join(',')))")
+          # Pi's SDK requires Node 22.19+; keep the existing Node 20 matrix for
+          # other packages and exercise Pi on the supported 22/24 legs.
+          LIST=$(printf '%s' "$PROJECTS" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>process.stdout.write(JSON.parse(d).filter(p=>process.env.TEST_NODE_VERSION!=='20.x'||p!=='@copilotkit/pi-agent').join(',')))")
           echo "projects=$LIST" >> "$GITHUB_OUTPUT"
           if [ -n "$LIST" ]; then echo "has=true" >> "$GITHUB_OUTPUT"; else echo "has=false" >> "$GITHUB_OUTPUT"; fi
           echo "Selected projects: ${LIST:-<none>}"

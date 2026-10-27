@@ -43,6 +43,8 @@ const text = {
     deny: "Decline",
     confirmed: "Confirmed",
     declined: "Declined",
+    confirmationInterrupted: "Interrupted",
+    confirmationFailed: "Confirmation failed",
     confirmation: "Your confirmation",
     restore: "Restoring conversation…",
     interrupted:
@@ -80,6 +82,8 @@ const text = {
     deny: "拒绝",
     confirmed: "已确认",
     declined: "已拒绝",
+    confirmationInterrupted: "已中断",
+    confirmationFailed: "确认未完成",
     confirmation: "请你确认",
     restore: "正在恢复对话…",
     interrupted: "上一次任务已中断，可以发新消息继续。",
@@ -90,6 +94,23 @@ const text = {
     stopped: "任务已停止。",
   },
 };
+
+function confirmationResult(
+  result: string,
+): "confirmed" | "declined" | "confirmationInterrupted" | "confirmationFailed" {
+  try {
+    const value: unknown = JSON.parse(result);
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      if ("interrupted" in value && value.interrupted === true)
+        return "confirmationInterrupted";
+      if ("approved" in value && value.approved === true) return "confirmed";
+      if ("approved" in value && value.approved === false) return "declined";
+    }
+  } catch {}
+  if (/cancelled|canceled|aborted|interrupted/i.test(result))
+    return "confirmationInterrupted";
+  return "confirmationFailed";
+}
 
 const renderers = [
   defineToolCallRenderer({
@@ -288,9 +309,7 @@ function Conversation({
           ) : (
             <small>
               {status === "complete"
-                ? result.includes("true")
-                  ? t.confirmed
-                  : t.declined
+                ? t[confirmationResult(result)]
                 : t.running}
             </small>
           )}

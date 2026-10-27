@@ -132,9 +132,101 @@ test("stops a pending approval and permits a later turn", async ({ page }) => {
   await expect(page.getByRole("status")).toContainText("Task stopped");
   await expect(page.getByTestId("goal-input")).toHaveValue("3");
   await page.reload();
+  const cancelled = page.getByTestId("confirmation");
+  await expect(cancelled).toContainText("Interrupted");
+  await expect(cancelled).not.toContainText("Confirmed");
+  await expect(cancelled.getByRole("button")).toHaveCount(0);
   await send(page, "Continue after the cancelled task");
   await expect(page.getByTestId("pi-chat")).toContainText("Hello from Pi");
   await idle(page);
+});
+
+test("shows interrupted and failed confirmations without claiming approval", async ({
+  page,
+}) => {
+  const threadId = await page.evaluate(() =>
+    localStorage.getItem("pi-demo-thread"),
+  );
+  let result = JSON.stringify({
+    interrupted: true,
+    error: "The previous task ended before a result was recorded",
+  });
+  const history = () => ({
+    messages: [
+      {
+        id: "recovered-user",
+        role: "user",
+        content: "Ask me to confirm a target of 9",
+      },
+      {
+        id: "recovered-assistant",
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: "recovered-call",
+            type: "function",
+            function: {
+              name: "request_confirmation",
+              arguments: JSON.stringify({ message: "Set the target to 9?" }),
+            },
+          },
+        ],
+      },
+      {
+        id: "recovered-result",
+        role: "tool",
+        toolCallId: "recovered-call",
+        content: result,
+      },
+    ],
+    state: { goal: 3 },
+    interrupted: true,
+    running: false,
+    pending: [],
+  });
+  // Project the same settled recovery events as PiAgentRunner. The real SDK
+  // crash-file recovery is exercised separately in the HTTP/Core tests.
+  await page.route("**/api/pi/history?**", (route) =>
+    route.fulfill({ json: history() }),
+  );
+  await page.route("**/api/copilotkit/agent/pi/connect", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: [
+        { type: "RUN_STARTED", threadId, runId: "recovered-run" },
+        { type: "MESSAGES_SNAPSHOT", messages: history().messages },
+        { type: "STATE_SNAPSHOT", snapshot: history().state },
+        { type: "RUN_FINISHED", threadId, runId: "recovered-run" },
+      ]
+        .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+        .join(""),
+    }),
+  );
+
+  for (const [content, english, chinese] of [
+    [result, "Interrupted", "已中断"],
+    [
+      JSON.stringify({ error: "Tool failed", retryable: true }),
+      "Confirmation failed",
+      "确认未完成",
+    ],
+  ]) {
+    result = content;
+    await page.reload();
+    await page.getByRole("combobox").selectOption("en");
+    const card = page.getByTestId("confirmation");
+    await expect(card).toContainText(english);
+    await expect(card).not.toContainText("Confirmed");
+    await expect(card).not.toContainText("Declined");
+    await expect(card.getByRole("button")).toHaveCount(0);
+    await expect(page.getByTestId("goal-input")).toHaveValue("3");
+    await idle(page);
+    await page.getByRole("combobox").selectOption("zh");
+    await expect(card).toContainText(chinese);
+    await expect(card).not.toContainText("已确认");
+    await expect(card).not.toContainText("已拒绝");
+  }
 });
 
 test("stops active output and remains usable on a narrow screen", async ({

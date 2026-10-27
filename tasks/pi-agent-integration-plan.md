@@ -4,7 +4,7 @@
 
 分支：`feat/pi-agent-integration`
 
-状态：适配包和示例已实现，草稿 [PR #1](https://github.com/huaigu/CopilotKit/pull/1)；验收与未验证项见 [实现与验收记录](./pi-agent-verification.md)。
+状态：适配包和示例已实现，已关闭的草稿 [PR #1](https://github.com/huaigu/CopilotKit/pull/1)；验收与未验证项见 [实现与验收记录](./pi-agent-verification.md)。
 
 ## 目标与范围
 

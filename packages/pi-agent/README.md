@@ -41,7 +41,7 @@ export const handler = createCopilotRuntimeHandler({
 });
 ```
 
-Use `<CopilotKitProvider runtimeUrl="/api/copilotkit" agent="pi" useSingleEndpoint={false}>` on the frontend. All imports of this package belong in server code. Pi's filesystem/model dependencies must not enter browser bundles.
+Use `<CopilotKitProvider runtimeUrl="/api/copilotkit" agentId="pi" useSingleEndpoint={false}>` on the frontend. All imports of this package belong in server code. Pi's filesystem/model dependencies must not enter browser bundles.
 
 ## Configuration
 

@@ -57,4 +57,4 @@ The user authorized implementation and verification after reviewing the plan. Re
 - [x] Add the React example, configuration guide, and Nx verification targets.
 - [x] Run deterministic SDK / HTTP tests, production browser acceptance, related Core regressions, type checks, builds, and frozen-lock validation; document the results.
 - [ ] Run live-provider acceptance after configuring model credentials; this remains explicitly unverified.
-- [x] Open draft [PR #1](https://github.com/huaigu/CopilotKit/pull/1) for review without merging or publishing.
+- [x] Complete branch review and close draft [PR #1](https://github.com/huaigu/CopilotKit/pull/1) as requested; retain `feat/pi-agent-integration` without merging or publishing. See [review results](./pi-agent-review.md).

@@ -38,3 +38,21 @@ passed 227 tests in 11 files, including six new management tests.
 Changed-file `pnpm exec oxlint` passed with no warnings or errors.
 Docs examples and limits were checked against both SDK and companion API source.
 Live backend acceptance remains a separate preview-delivery gate.
+
+## Pi Agent integration — 2026-10-27
+
+Branch: `feat/pi-agent-integration`
+
+Base: `e109159ba86fd5cee673caf3f012764718034f7d`
+
+Plan: [Pi Agent 接入计划](./pi-agent-integration-plan.md)
+
+This task currently covers planning only. Existing tasks above retain their original status.
+
+- [x] Inspect the fork's current main, repository conventions, Runtime interface, and Pi SDK.
+- [x] Create an isolated feature branch and write the integration design and acceptance criteria.
+- [ ] Validate pinned SDK / protocol versions, cancellation, history ownership, and frontend-tool continuation.
+- [ ] Implement the independent Pi adapter, event mapping, and session lifecycle with focused tests.
+- [ ] Add frontend tools, confirmation, minimal shared state, and a controlled Skill example.
+- [ ] Add the React example, configuration guide, and Nx verification targets.
+- [ ] Run real-model and browser acceptance, relevant regressions, and document results before opening an implementation PR.

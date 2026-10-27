@@ -47,12 +47,14 @@ Base: `e109159ba86fd5cee673caf3f012764718034f7d`
 
 Plan: [Pi Agent 接入计划](./pi-agent-integration-plan.md)
 
-This task currently covers planning only. Existing tasks above retain their original status.
+The user authorized implementation and verification after reviewing the plan. Results and remaining live-provider acceptance are recorded in [Pi Agent verification](./pi-agent-verification.md). Existing tasks above retain their original status.
 
 - [x] Inspect the fork's current main, repository conventions, Runtime interface, and Pi SDK.
 - [x] Create an isolated feature branch and write the integration design and acceptance criteria.
-- [ ] Validate pinned SDK / protocol versions, cancellation, history ownership, and frontend-tool continuation.
-- [ ] Implement the independent Pi adapter, event mapping, and session lifecycle with focused tests.
-- [ ] Add frontend tools, confirmation, minimal shared state, and a controlled Skill example.
-- [ ] Add the React example, configuration guide, and Nx verification targets.
-- [ ] Run real-model and browser acceptance, relevant regressions, and document results before opening an implementation PR.
+- [x] Validate pinned SDK / protocol versions, cancellation, history ownership, and frontend-tool continuation.
+- [x] Implement the independent Pi adapter, event mapping, and session lifecycle with focused tests.
+- [x] Add frontend tools, confirmation, minimal shared state, and a controlled Skill example.
+- [x] Add the React example, configuration guide, and Nx verification targets.
+- [x] Run deterministic SDK / HTTP tests, production browser acceptance, related Core regressions, type checks, builds, and frozen-lock validation; document the results.
+- [ ] Run live-provider acceptance after configuring model credentials; this remains explicitly unverified.
+- [x] Open draft [PR #1](https://github.com/huaigu/CopilotKit/pull/1) for review without merging or publishing.

@@ -33,3 +33,5 @@ jobs:
       - run: pnpm nx run pi-agent-example:build
       - run: pnpm --dir examples/v2/react/pi-agent exec playwright install --with-deps chromium
       - run: pnpm nx run pi-agent-example:e2e
+        env:
+          PI_E2E_PRODUCTION: "true"

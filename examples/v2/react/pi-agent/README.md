@@ -35,9 +35,11 @@ pnpm nx run pi-agent-example:check-types
 pnpm nx run pi-agent-example:build
 pnpm --dir examples/v2/react/pi-agent exec playwright install chromium
 pnpm nx run pi-agent-example:e2e
+# Verify an existing production build instead of starting a dev server:
+PI_E2E_PRODUCTION=true pnpm nx run pi-agent-example:e2e
 ```
 
-Browser checks assert that CopilotKit telemetry is disabled and allow only local page requests. They start their own server with `PI_TEST_MODE=true`, use a separate `.next-e2e` cache, and verify English/Chinese conversations, tools, confirmation, shared state, Skills, history and cancellation. A Chromium installation is required. `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` can select an existing browser in a restricted test environment.
+Browser checks assert that CopilotKit telemetry is disabled and allow only local page requests. They start their own server with `PI_TEST_MODE=true`, use a separate `.next-e2e` cache in dev mode (or the existing `.next` production build), and verify English/Chinese conversations, tools, confirmation, shared state, Skills, history and cancellation. A Chromium installation is required. `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` can select an existing browser in a restricted test environment.
 
 ## 中文说明
 

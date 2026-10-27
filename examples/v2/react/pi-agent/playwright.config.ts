@@ -17,7 +17,10 @@ export default defineConfig({
       : undefined,
   },
   webServer: {
-    command: "next dev --hostname 127.0.0.1 --port 3010",
+    command:
+      process.env.PI_E2E_PRODUCTION === "true"
+        ? "next start --hostname 127.0.0.1 --port 3010"
+        : "next dev --hostname 127.0.0.1 --port 3010",
     url: "http://127.0.0.1:3010",
     timeout: 300_000,
     stdout: "pipe",
@@ -25,7 +28,8 @@ export default defineConfig({
     env: {
       PI_TEST_MODE: "true",
       PI_SESSION_DIR: ".pi-data-e2e",
-      PI_NEXT_DIST_DIR: ".next-e2e",
+      PI_NEXT_DIST_DIR:
+        process.env.PI_E2E_PRODUCTION === "true" ? ".next" : ".next-e2e",
       NEXT_TELEMETRY_DISABLED: "1",
       COPILOTKIT_TELEMETRY_DISABLED: "true",
       DO_NOT_TRACK: "1",

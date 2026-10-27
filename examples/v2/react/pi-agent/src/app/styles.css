@@ -2,12 +2,12 @@
 
 :root {
   color-scheme: light;
-  --paper: #f7f7f3;
-  --ink: #22262a;
-  --muted: #69716f;
-  --line: #e3e5df;
-  --accent: #6556d9;
-  --surface: #fff;
+  --pi-paper: #f7f7f3;
+  --pi-ink: #22262a;
+  --pi-muted: #69716f;
+  --pi-line: #e3e5df;
+  --pi-accent: #6556d9;
+  --pi-surface: #fff;
   font-family:
     Inter,
     ui-sans-serif,
@@ -24,8 +24,8 @@
 }
 body {
   margin: 0;
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--pi-paper);
+  color: var(--pi-ink);
 }
 button,
 input,
@@ -61,14 +61,14 @@ button {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--pi-line);
   gap: 20px;
 }
 .brand {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: var(--ink);
+  color: var(--pi-ink);
   font-weight: 650;
   text-decoration: none;
 }
@@ -80,13 +80,13 @@ button {
   border: 1px solid #d9d6ee;
   border-radius: 13px;
   background: #eeecfb;
-  color: var(--accent);
+  color: var(--pi-accent);
   font-size: 29px;
   font-family: Georgia, serif;
 }
 .brand small {
   display: block;
-  color: var(--muted);
+  color: var(--pi-muted);
   font-weight: 450;
   font-size: 11px;
   margin-top: 3px;
@@ -98,7 +98,7 @@ button {
 }
 .mode {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--pi-muted);
 }
 .test-mode {
   padding: 6px 10px;
@@ -110,7 +110,7 @@ button {
 select {
   background: transparent;
   padding: 7px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--pi-line);
   border-radius: 8px;
   font-size: 12px;
   color: #515a56;
@@ -134,10 +134,10 @@ select {
   font-size: 10px;
   font-weight: 650;
   letter-spacing: 0.13em;
-  color: var(--muted);
+  color: var(--pi-muted);
 }
 .eyebrow {
-  color: var(--accent);
+  color: var(--pi-accent);
 }
 h1 {
   margin: 12px 0 9px;
@@ -149,7 +149,7 @@ h1 {
 .conversation-intro > p {
   margin: 0;
   font-size: 14px;
-  color: var(--muted);
+  color: var(--pi-muted);
   line-height: 1.6;
 }
 .conversation-meta {
@@ -163,7 +163,7 @@ h1 {
   align-items: center;
   gap: 7px;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--pi-muted);
 }
 .status i {
   width: 6px;
@@ -175,12 +175,12 @@ h1 {
   padding: 7px 0 7px 14px;
   background: none;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--pi-muted);
 }
 .chat-shell {
   flex: 1;
   min-height: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--pi-line);
   border-radius: 20px;
   background: white;
   overflow: hidden;
@@ -197,7 +197,7 @@ h1 {
 }
 .workspace-card {
   padding: 23px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--pi-line);
   border-radius: 18px;
   background: linear-gradient(125deg, #fff, #f5f5ee);
 }
@@ -216,7 +216,7 @@ h1 {
   border: 0;
   border-bottom: 1px solid #c8ccc4;
   background: none;
-  color: var(--ink);
+  color: var(--pi-ink);
   font-size: 38px;
   font-weight: 500;
   width: 135px;
@@ -224,13 +224,13 @@ h1 {
 }
 .goal-control span {
   font-size: 11px;
-  color: var(--accent);
+  color: var(--pi-accent);
 }
 .workspace-card p,
 .try-card > p,
 .sidebar-footer p {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--pi-muted);
   line-height: 1.6;
 }
 .workspace-card p {
@@ -248,7 +248,7 @@ h1 {
   padding: 15px 0;
   width: 100%;
   background: none;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--pi-line);
   line-height: 1.5;
   color: #3f4743;
   font-size: 12px;
@@ -288,11 +288,11 @@ h1 {
 }
 .loading {
   font-size: 13px;
-  color: var(--muted);
+  color: var(--pi-muted);
   margin: 30px;
 }
 .tool-card {
-  border: 1px solid var(--line);
+  border: 1px solid var(--pi-line);
   background: #f8f9f6;
   border-radius: 12px;
   padding: 12px 14px;
@@ -308,10 +308,10 @@ h1 {
 }
 .tool-card p {
   margin: 4px 0 0;
-  color: var(--muted);
+  color: var(--pi-muted);
 }
 .tool-icon {
-  color: var(--accent);
+  color: var(--pi-accent);
   font-size: 16px;
 }
 .tool-details {
@@ -325,7 +325,7 @@ h1 {
 }
 .tool-details summary small {
   margin-left: auto;
-  color: var(--muted);
+  color: var(--pi-muted);
 }
 .tool-details pre {
   overflow: auto;
@@ -353,7 +353,7 @@ h1 {
 .confirmation-actions button {
   padding: 9px 16px;
   color: white;
-  background: var(--accent);
+  background: var(--pi-accent);
   border-radius: 8px;
   font-size: 12px;
 }
@@ -362,7 +362,7 @@ h1 {
   color: #625779;
 }
 .confirmation small {
-  color: var(--muted);
+  color: var(--pi-muted);
 }
 @media (max-width: 1000px) {
   .workspace-grid {

@@ -247,80 +247,87 @@ describe("Pi through the CopilotKit Runtime and HTTP clients", () => {
     },
   );
 
-  it("resumes browser tools in a sequential Pi tool batch without exposing later calls early", async () => {
-    const requests: Parameters<StreamFn>[1][] = [];
-    const backend = vi.fn(async () => ({
-      content: [{ type: "text" as const, text: "Backend ready" }],
-      details: {},
-    }));
-    const app = await host(
-      await workspace(),
-      scriptedStream((context, index) => {
-        requests.push(structuredClone(context));
-        return index === 0
-          ? {
-              tools: [
-                { id: "ordered-backend", name: "prepare_goal", arguments: {} },
-                {
-                  id: "ordered-browser-1",
-                  name: "confirm_goal",
-                  arguments: { goal: 7 },
-                },
-                {
-                  id: "ordered-browser-2",
-                  name: "confirm_goal",
-                  arguments: { goal: 8 },
-                },
-              ],
-            }
-          : "Both browser steps completed in Pi order.";
-      }),
-      {
-        tools: [
-          {
-            name: "prepare_goal",
-            label: "Prepare goal",
-            description: "Prepare the workflow before browser confirmation.",
-            parameters: Type.Object({}),
-            executionMode: "sequential",
-            execute: backend,
-          },
-        ],
-      },
-    );
-    const client = app.client();
-    const core = new CopilotKitCore({
-      agents__unsafe_dev_only: { pi: client },
-    });
-    const goals: number[] = [];
-    const approve = vi.fn(async ({ goal }: { goal: number }) => {
-      expect(
-        (await app.store.history(client.threadId!)).pending.map(
+  it.each(["sequential", "parallel"] as const)(
+    "resumes browser tools in a %s Pi tool batch without exposing later calls early",
+    async (executionMode) => {
+      const requests: Parameters<StreamFn>[1][] = [];
+      const backend = vi.fn(async () => ({
+        content: [{ type: "text" as const, text: "Backend ready" }],
+        details: {},
+      }));
+      const app = await host(
+        await workspace(),
+        scriptedStream((context, index) => {
+          requests.push(structuredClone(context));
+          return index === 0
+            ? {
+                tools: [
+                  {
+                    id: "ordered-backend",
+                    name: "prepare_goal",
+                    arguments: {},
+                  },
+                  {
+                    id: "ordered-browser-1",
+                    name: "confirm_goal",
+                    arguments: { goal: 7 },
+                  },
+                  {
+                    id: "ordered-browser-2",
+                    name: "confirm_goal",
+                    arguments: { goal: 8 },
+                  },
+                ],
+              }
+            : "Both browser steps completed in Pi order.";
+        }),
+        {
+          tools: [
+            {
+              name: "prepare_goal",
+              label: "Prepare goal",
+              description: "Prepare the workflow before browser confirmation.",
+              parameters: Type.Object({}),
+              executionMode,
+              execute: backend,
+            },
+          ],
+        },
+      );
+      const client = app.client();
+      const core = new CopilotKitCore({
+        agents__unsafe_dev_only: { pi: client },
+      });
+      const goals: number[] = [];
+      const approve = vi.fn(async ({ goal }: { goal: number }) => {
+        const pending = (await app.store.history(client.threadId!)).pending.map(
           (call) => call.args,
-        ),
-      ).toEqual([{ goal }]);
-      goals.push(goal);
-      return { approved: true, goal };
-    });
-    core.addTool({
-      name: frontendTool.name,
-      description: frontendTool.description,
-      parameters: z.object({ goal: z.number().int() }),
-      type: "human-in-the-loop",
-      handler: approve,
-      followUp: true,
-    });
-    client.addMessage(user("Prepare, then confirm goals 7 and 8 in order."));
-    await core.runAgent({ agent: client });
-    expect(backend).toHaveBeenCalledOnce();
-    expect(approve).toHaveBeenCalledTimes(2);
-    expect(goals).toEqual([7, 8]);
-    expect(requests).toHaveLength(2);
-    expect(client.messages.at(-1)?.content).toBe(
-      "Both browser steps completed in Pi order.",
-    );
-    expect((await app.store.history(client.threadId!)).pending).toEqual([]);
-  });
+        );
+        if (executionMode === "sequential") expect(pending).toEqual([{ goal }]);
+        else expect(pending).toContainEqual({ goal });
+        goals.push(goal);
+        return { approved: true, goal };
+      });
+      core.addTool({
+        name: frontendTool.name,
+        description: frontendTool.description,
+        parameters: z.object({ goal: z.number().int() }),
+        type: "human-in-the-loop",
+        handler: approve,
+        followUp: true,
+      });
+      client.addMessage(user("Prepare, then confirm goals 7 and 8 in order."));
+      await core.runAgent({ agent: client });
+      expect(backend).toHaveBeenCalledOnce();
+      expect(approve).toHaveBeenCalledTimes(2);
+      expect(goals).toEqual([7, 8]);
+      expect(requests).toHaveLength(2);
+      expect(client.messages.at(-1)?.content).toBe(
+        "Both browser steps completed in Pi order.",
+      );
+      expect((await app.store.history(client.threadId!)).pending).toEqual([]);
+    },
+  );
 
   it("closes browser calls not reached by a stopped sequential Pi batch", async () => {
     const app = await host(

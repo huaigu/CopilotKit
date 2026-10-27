@@ -1,0 +1,23 @@
+{
+  "name": "@copilotkit/pi-agent",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "dependsOn": [],
+      "options": {
+        "command": "tsc -p tsconfig.build.json",
+        "cwd": "packages/pi-agent"
+      }
+    },
+    "check-types": {
+      "executor": "nx:run-commands",
+      "dependsOn": [],
+      "options": { "command": "tsc --noEmit", "cwd": "packages/pi-agent" }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "dependsOn": [],
+      "options": { "command": "vitest run", "cwd": "packages/pi-agent" }
+    }
+  }
+}

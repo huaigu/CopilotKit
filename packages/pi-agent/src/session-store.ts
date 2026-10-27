@@ -533,6 +533,8 @@ export class PiSessionStore {
       })),
     );
     const t = await this.get(input.threadId, scope, tools);
+    // Session construction can finish after shutdown was requested.
+    if (this.disposed) throw new Error("Pi session store is disposed");
     if (t.channel) throw new Error("This Pi thread is already running");
     const knownToolIds = new Set(
       this.project(t)
@@ -547,8 +549,8 @@ export class PiSessionStore {
         )
           throw new Error("Unknown or expired frontend tool result");
         if (
-          t.meta.receipts?.[m.toolCallId] !== undefined &&
-          t.meta.receipts[m.toolCallId] !== stableJson(parsedResult(m.content))
+          Object.hasOwn(t.meta.receipts ?? {}, m.toolCallId) &&
+          t.meta.receipts![m.toolCallId] !== stableJson(parsedResult(m.content))
         )
           throw new Error(
             "Frontend tool result conflicts with its previous result",
@@ -559,8 +561,14 @@ export class PiSessionStore {
       t.unsubscribe();
       t.session.dispose();
       this.threads.delete(t.key);
-      const replacement = await this.make(input.threadId, scope, tools);
-      this.threads.set(t.key, Promise.resolve(replacement));
+      const replacement = this.make(input.threadId, scope, tools);
+      this.threads.set(t.key, replacement);
+      try {
+        await replacement;
+      } catch (error) {
+        if (this.threads.get(t.key) === replacement) this.threads.delete(t.key);
+        throw error;
+      }
       return this.run(input, emit, scope);
     }
     t.meta.state = structuredClone((input.state ?? {}) as Json);
@@ -644,6 +652,7 @@ export class PiSessionStore {
     t.meta.interrupted = true;
     try {
       await this.save(t);
+      if (this.disposed) return finished;
       if (input.context?.length)
         await t.session.sendCustomMessage(
           {
@@ -659,6 +668,7 @@ export class PiSessionStore {
       throw error;
     }
     const userText = unseen[0].content;
+    if (this.disposed) return finished;
     if (t.cancelled) {
       this.finish(t, false);
       return finished;
@@ -726,10 +736,22 @@ export class PiSessionStore {
     await Promise.all(
       [...this.threads.values()].map(async (p) => {
         const t = await p;
+        t.cancelled = true;
+        const channel = t.channel;
+        if (channel && !channel.finished) {
+          channel.finished = true;
+          channel.emit({
+            type: "RUN_ERROR",
+            message: "Pi session store disposed",
+          } as BaseEvent);
+          channel.finish(false);
+          t.channel = undefined;
+        }
         t.session.agent.abort();
         t.bridge.cancel("Store disposed");
         await t.session.abort();
         await t.task;
+        await t.saveTail;
         t.unsubscribe();
         t.session.dispose();
       }),

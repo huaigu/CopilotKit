@@ -249,4 +249,102 @@ describe("real Pi SDK session management", () => {
     expect(agent.messages).toEqual([]);
     expect(clone.messages.at(-1)?.content).toBe("Done");
   });
+  it("evicts an idle session while retaining completed durable history", async () => {
+    const { store } = await make({ idleMs: 1000000 });
+    const request = input("Remember this");
+    await collect(store, request);
+    const before = await store.history(request.threadId);
+    const now = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 1000001);
+    try {
+      await store.pruneIdle();
+    } finally {
+      now.mockRestore();
+    }
+    expect((await store.history(request.threadId)).messages).toEqual(
+      before.messages,
+    );
+  });
+  it("rejects a conflicting completed browser result without a new model call", async () => {
+    const stream = vi.fn(
+      scriptedStream([
+        { tools: [{ id: "approval", name: "confirm", arguments: {} }] },
+        "Approved",
+      ]),
+    );
+    const { store } = await make({ streamFn: stream });
+    const request = {
+      ...input("Confirm"),
+      tools: [
+        {
+          name: "confirm",
+          description: "Confirm",
+          parameters: { type: "object", properties: {} },
+        },
+      ],
+    };
+    await collect(store, request);
+    const reply = {
+      id: "result",
+      role: "tool" as const,
+      toolCallId: "approval",
+      content: '{"approved":true}',
+    };
+    await collect(store, {
+      ...request,
+      messages: [...request.messages, reply],
+    });
+    await expect(
+      collect(store, {
+        ...request,
+        messages: [
+          ...request.messages,
+          { ...reply, content: '{"approved":false}' },
+        ],
+      }),
+    ).rejects.toThrow("conflicts");
+    expect(stream).toHaveBeenCalledTimes(2);
+  });
+  it("does not admit a model run after dispose races initial session construction", async () => {
+    const stream = vi.fn(scriptedStream(["Must not run"]));
+    const { store } = await make({ streamFn: stream });
+    const late: BaseEvent[] = [];
+    let disposed = false;
+    const result = store
+      .run(input("Shutdown race"), (event) => {
+        if (disposed) late.push(event);
+      })
+      .then(
+        () => null,
+        (error) => error,
+      );
+    await store.dispose();
+    disposed = true;
+    expect(await result).toBeInstanceOf(Error);
+    expect(stream).not.toHaveBeenCalled();
+    expect(late).toEqual([]);
+  });
+  it("closes a starting run before dispose resolves and prevents its delayed prompt", async () => {
+    const stream = vi.fn(scriptedStream(["Must not run"]));
+    const { store } = await make({ streamFn: stream });
+    let started!: () => void;
+    const admission = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const events: BaseEvent[] = [];
+    const late: BaseEvent[] = [];
+    let disposed = false;
+    const result = store.run(input("Shutdown during admission"), (event) => {
+      events.push(event);
+      if (disposed) late.push(event);
+      if (event.type === "RUN_STARTED") started();
+    });
+    await admission;
+    await store.dispose();
+    disposed = true;
+    await result;
+    expect(stream).not.toHaveBeenCalled();
+    expect(late).toEqual([]);
+    expect(events.filter((e) => e.type === "RUN_ERROR")).toHaveLength(1);
+    expect(events.filter((e) => e.type === "RUN_FINISHED")).toHaveLength(0);
+  });
 });

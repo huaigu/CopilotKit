@@ -16,24 +16,51 @@ export const verificationModel: Model<"openai-completions"> = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 };
 
+function userText(
+  content: string | readonly { type: string; text?: string }[],
+): string {
+  return typeof content === "string"
+    ? content
+    : content
+        .filter((part) => part.type === "text")
+        .map((part) => part.text ?? "")
+        .join("\n");
+}
+
+function isApplicationContext(text: string): boolean {
+  if (text.startsWith("[CopilotKit context]")) return true;
+  // Pi projects custom messages into user text for the provider. The adapter's
+  // copilot-context message currently carries the context array as plain JSON.
+  try {
+    const context: unknown = JSON.parse(text);
+    return (
+      Array.isArray(context) &&
+      context.length > 0 &&
+      context.every(
+        (entry) =>
+          entry !== null &&
+          typeof entry === "object" &&
+          typeof entry.description === "string" &&
+          "value" in entry,
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function createVerificationStream(skillPath: string): StreamFn {
   return (model, context, options) => {
     const stream = createAssistantMessageEventStream();
     void (async () => {
       const messages = context.messages;
       const lastUserIndex = messages.findLastIndex(
-        (message) => message.role === "user",
+        (message) =>
+          message.role === "user" &&
+          !isApplicationContext(userText(message.content)),
       );
       const user = messages[lastUserIndex];
-      const prompt =
-        user?.role === "user"
-          ? typeof user.content === "string"
-            ? user.content
-            : user.content
-                .filter((part) => part.type === "text")
-                .map((part) => part.text)
-                .join("\n")
-          : "";
+      const prompt = user?.role === "user" ? userText(user.content) : "";
       const chinese = /[\u3400-\u9fff]/.test(prompt);
       const results = messages
         .slice(lastUserIndex + 1)
@@ -143,13 +170,10 @@ export function createVerificationStream(skillPath: string): StreamFn {
           answer = `${chinese ? "当前共享状态" : "Current shared state"}: ${resultText("pi_get_state")}`;
       } else {
         const remembered = messages
+          .slice(0, lastUserIndex)
           .filter((message) => message.role === "user")
-          .map((message) =>
-            typeof message.content === "string"
-              ? message.content
-              : JSON.stringify(message.content),
-          )
-          .slice(0, -1)
+          .map((message) => userText(message.content))
+          .filter((message) => !isApplicationContext(message))
           .join(" / ");
         answer = chinese
           ? `你好，我是 Pi。你说的是：${prompt}${remembered ? `\n\n此前你提到：${remembered}` : ""}`

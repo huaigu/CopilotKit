@@ -50,12 +50,19 @@ test("streams bilingual conversation and restores its history after reload", asy
   await send(page, "Remember the project name Orchard.");
   await expect(page.getByTestId("pi-chat")).toContainText("Hello from Pi");
   await idle(page);
+  await expect(
+    page.getByTestId("copilot-assistant-message").last(),
+  ).not.toContainText("Earlier you said");
   await page.reload();
   await expect(page.getByTestId("pi-chat")).toContainText("Orchard");
   await page.getByRole("combobox").selectOption("zh");
   await send(page, "之前的项目叫什么？");
-  await expect(page.getByTestId("pi-chat")).toContainText("此前你提到");
+  const latestReply = page.getByTestId("copilot-assistant-message").last();
+  await expect(latestReply).toContainText("此前你提到");
+  await expect(latestReply).toContainText("Orchard");
   await idle(page);
+  await expect(latestReply).not.toContainText("Preferred reply language");
+  await expect(latestReply).not.toContainText('"description":');
   expect(errors).toEqual([]);
 });
 

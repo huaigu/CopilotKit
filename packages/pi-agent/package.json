@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/pi-agent-runner.d.ts",
+      "import": "./dist/pi-agent-runner.js"
     }
   },
   "engines": {
@@ -33,6 +37,15 @@
     "typescript": "^5.9.3",
     "vitest": "4.1.3",
     "@copilotkit/core": "1.81.0",
+    "@copilotkit/runtime": "1.81.0",
+    "zod": "3.25.76"
+  },
+  "peerDependencies": {
     "@copilotkit/runtime": "1.81.0"
+  },
+  "peerDependenciesMeta": {
+    "@copilotkit/runtime": {
+      "optional": true
+    }
   }
 }

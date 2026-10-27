@@ -1,5 +1,5 @@
 import { createServer, type Server } from "node:http";
-import { mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -10,8 +10,8 @@ import {
   type Message,
   type BaseEvent,
 } from "@ag-ui/client";
-import { CopilotKitCore } from "@copilotkit/core";
-import { CopilotRuntime, InMemoryAgentRunner } from "@copilotkit/runtime/v2";
+import { CopilotKitCore, ProxiedCopilotRuntimeAgent } from "@copilotkit/core";
+import { CopilotRuntime } from "@copilotkit/runtime/v2";
 import { createCopilotNodeListener } from "@copilotkit/runtime/v2/node";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
@@ -20,6 +20,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import { PiAgent, PiSessionStore } from "../src/index.js";
+import { PiAgentRunner } from "../src/pi-agent-runner.js";
 import { fixtureModel, scriptedStream } from "./fixture.js";
 
 process.env.COPILOTKIT_TELEMETRY_DISABLED = "true";
@@ -55,7 +56,7 @@ async function host(root: string, streamFn: StreamFn) {
   });
   const runtime = new CopilotRuntime({
     agents: { pi: new PiAgent({ store, agentId: "pi" }) },
-    runner: new InMemoryAgentRunner(),
+    runner: new PiAgentRunner({ store, agentId: "pi" }),
   });
   const server = createServer(
     createCopilotNodeListener({
@@ -455,5 +456,167 @@ describe("Pi through the CopilotKit Runtime and HTTP clients", () => {
       ),
     ).toHaveLength(1);
     expect((await app.store.history(client.threadId!)).running).toBe(false);
+  });
+  it("reconnects cancelled confirmation history without reviving a browser tool", async () => {
+    const requests: Parameters<StreamFn>[1][] = [];
+    const app = await host(
+      await workspace(),
+      scriptedStream((context, index) => {
+        requests.push(structuredClone(context));
+        return index === 0
+          ? {
+              tools: [
+                {
+                  id: "cancel-on-reload",
+                  name: "confirm_goal",
+                  arguments: { goal: 12 },
+                },
+              ],
+            }
+          : "A fresh task completed.";
+      }),
+    );
+    const initial = app.client();
+    initial.addMessage(user("Ask me to confirm goal 12"));
+    await initial.runAgent({ tools: [frontendTool] });
+    await app.store.abort(initial.threadId!);
+    const history = await app.store.history(initial.threadId!);
+    const calls = history.messages.flatMap((m) =>
+      m.role === "assistant" ? (m.toolCalls ?? []) : [],
+    );
+    expect(
+      calls.every((call) =>
+        history.messages.some(
+          (m) => m.role === "tool" && m.toolCallId === call.id,
+        ),
+      ),
+    ).toBe(true);
+    const restored = new ProxiedCopilotRuntimeAgent({
+      agentId: "pi",
+      threadId: initial.threadId!,
+      runtimeUrl: app.baseUrl,
+      transport: "rest",
+      initialMessages: history.messages,
+    });
+    const core = new CopilotKitCore({
+      agents__unsafe_dev_only: { pi: restored },
+    });
+    const approval = vi.fn(async () => ({ approved: true }));
+    core.addTool({
+      name: frontendTool.name,
+      description: frontendTool.description,
+      parameters: z.object({ goal: z.number().int() }),
+      type: "human-in-the-loop",
+      handler: approval,
+      followUp: true,
+    });
+    await core.connectAgent({ agent: restored });
+    expect(approval).not.toHaveBeenCalled();
+    const restoredCalls = restored.messages.flatMap((m) =>
+      m.role === "assistant" ? (m.toolCalls ?? []) : [],
+    );
+    expect(
+      restoredCalls.every((call) =>
+        restored.messages.some(
+          (m) => m.role === "tool" && m.toolCallId === call.id,
+        ),
+      ),
+    ).toBe(true);
+    restored.addMessage(user("Start a fresh task."));
+    await core.runAgent({ agent: restored });
+    expect(approval).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(2);
+    expect(restored.messages.at(-1)?.content).toBe("A fresh task completed.");
+  });
+  it("closes orphan browser calls after process loss without replaying a confirmation", async () => {
+    const root = await workspace();
+    const first = await host(
+      root,
+      scriptedStream([
+        {
+          tools: [
+            {
+              id: "process-loss-confirm",
+              name: "confirm_goal",
+              arguments: { goal: 15 },
+            },
+          ],
+        },
+      ]),
+    );
+    const original = first.client();
+    original.addMessage(user("Confirm goal 15"));
+    await original.runAgent({ tools: [frontendTool] });
+    expect(
+      (await first.store.history(original.threadId!)).pending,
+    ).toHaveLength(1);
+    // Capture the actual SDK files while the browser Promise is parked. Restore
+    // them after closing the first test host, discarding graceful abort writes,
+    // to reproduce the files a lost process leaves behind at the same path.
+    const snapshot = await workspace();
+    await cp(root, snapshot, { recursive: true });
+    await first.dispose();
+    await rm(root, { recursive: true, force: true });
+    await cp(snapshot, root, { recursive: true });
+    const requests: Parameters<StreamFn>[1][] = [];
+    const recovered = await host(
+      root,
+      scriptedStream((context) => {
+        requests.push(structuredClone(context));
+        return "Recovered with a fresh task.";
+      }),
+    );
+    const history = await recovered.store.history(original.threadId!);
+    expect(history.interrupted).toBe(true);
+    expect(history.running).toBe(false);
+    expect(history.pending).toEqual([]);
+    const interrupted = history.messages.find(
+      (message) =>
+        message.role === "tool" &&
+        message.toolCallId === "process-loss-confirm",
+    );
+    expect(interrupted?.content).toContain('"interrupted":true');
+    const restored = new ProxiedCopilotRuntimeAgent({
+      agentId: "pi",
+      threadId: original.threadId!,
+      runtimeUrl: recovered.baseUrl,
+      transport: "rest",
+      initialMessages: history.messages,
+    });
+    const core = new CopilotKitCore({
+      agents__unsafe_dev_only: { pi: restored },
+    });
+    const approval = vi.fn(async () => ({ approved: true }));
+    core.addTool({
+      name: frontendTool.name,
+      description: frontendTool.description,
+      parameters: z.object({ goal: z.number().int() }),
+      type: "human-in-the-loop",
+      handler: approval,
+      followUp: true,
+    });
+    await core.connectAgent({ agent: restored });
+    expect(approval).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(0);
+    expect(
+      restored.messages.some(
+        (message) => message.id === interrupted?.id && message.role === "tool",
+      ),
+    ).toBe(true);
+    restored.addMessage(user("Start a fresh task."));
+    await core.runAgent({ agent: restored });
+    expect(approval).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(1);
+    expect(restored.messages.at(-1)?.content).toBe(
+      "Recovered with a fresh task.",
+    );
+    const completed = await recovered.store.history(original.threadId!);
+    expect(
+      completed.messages.find(
+        (message) =>
+          message.role === "tool" &&
+          message.toolCallId === "process-loss-confirm",
+      )?.id,
+    ).toBe(interrupted?.id);
   });
 });

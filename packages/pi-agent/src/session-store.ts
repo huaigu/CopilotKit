@@ -45,6 +45,8 @@ interface Metadata {
   state: Json;
   interrupted: boolean;
   receipts?: Record<string, string>;
+  /** UI-only closure receipts for tools abandoned by a previous process. */
+  interruptedTools?: string[];
 }
 interface Channel {
   emit: Emit;
@@ -224,6 +226,33 @@ export class PiSessionStore {
         manager = SessionManager.create(this.options.cwd, dir);
       }
     } else manager = SessionManager.create(this.options.cwd, dir);
+    if (meta.interrupted) {
+      // A loaded session has no surviving Pi Promise. Keep UI closure receipts
+      // separate from the native transcript; provider normalization owns model
+      // context repair on a future prompt.
+      const messages = manager
+        .getBranch()
+        .flatMap((entry) =>
+          entry.type === "message" ? [entry.message as any] : [],
+        );
+      const resolved = new Set(
+        messages
+          .filter((message) => message.role === "toolResult")
+          .map((message) => message.toolCallId),
+      );
+      const orphaned = messages
+        .filter((message) => message.role === "assistant")
+        .flatMap((message) =>
+          (message.content ?? [])
+            .filter(
+              (part: any) => part.type === "toolCall" && !resolved.has(part.id),
+            )
+            .map((part: any) => part.id as string),
+        );
+      meta.interruptedTools = [
+        ...new Set([...(meta.interruptedTools ?? []), ...orphaned]),
+      ];
+    }
     const settings = SettingsManager.inMemory({
       compaction: { enabled: true },
       retry: { enabled: false },
@@ -399,7 +428,16 @@ export class PiSessionStore {
   private project(t: Thread): Message[] {
     this.syncIds(t);
     const messages: Message[] = [];
-    for (const entry of t.session.sessionManager.getBranch()) {
+    const branch = t.session.sessionManager.getBranch();
+    const resolved = new Set(
+      branch.flatMap((entry) =>
+        entry.type === "message" && (entry.message as any).role === "toolResult"
+          ? [(entry.message as any).toolCallId]
+          : [],
+      ),
+    );
+    const interrupted = new Set(t.meta.interruptedTools ?? []);
+    for (const entry of branch) {
       if (entry.type !== "message") continue;
       const m = entry.message as any;
       const id = t.meta.ids[entry.id] ?? `${t.key.slice(0, 12)}:${entry.id}`;
@@ -421,6 +459,19 @@ export class PiSessionStore {
             content: text,
             ...(calls.length ? { toolCalls: calls } : {}),
           });
+        for (const call of calls) {
+          if (interrupted.has(call.id) && !resolved.has(call.id))
+            messages.push({
+              id: `${t.key.slice(0, 12)}:${call.id}:interrupted`,
+              role: "tool",
+              toolCallId: call.id,
+              content: JSON.stringify({
+                interrupted: true,
+                error:
+                  "The previous Pi task ended before a tool result was recorded. This tool was not replayed during recovery.",
+              }),
+            });
+        }
       }
       if (m.role === "toolResult")
         messages.push({

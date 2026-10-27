@@ -17,9 +17,9 @@ The adapter pins Pi `1.4.0` and AG-UI `1.0.2`. It is private and is not publishe
 
 ```ts
 import { PiAgent, PiSessionStore } from "@copilotkit/pi-agent";
+import { PiAgentRunner } from "@copilotkit/pi-agent/runtime";
 import {
   CopilotRuntime,
-  InMemoryAgentRunner,
   createCopilotRuntimeHandler,
 } from "@copilotkit/runtime/v2";
 
@@ -33,7 +33,7 @@ const store = new PiSessionStore({
 });
 const runtime = new CopilotRuntime({
   agents: { pi: new PiAgent({ store, agentId: "pi" }) },
-  runner: new InMemoryAgentRunner(),
+  runner: new PiAgentRunner({ store, agentId: "pi" }),
 });
 export const handler = createCopilotRuntimeHandler({
   runtime,
@@ -85,9 +85,11 @@ During a normal active run, `PiAgent.abortRun()` reaches Pi cancellation. While 
 
 ## History and lifecycle
 
+Use the optional `@copilotkit/pi-agent/runtime` entry when hosting Pi in CopilotRuntime. `PiAgentRunner` extends the standard in-memory runner for execution and active connections. On reconnect to a settled thread it emits the authoritative Pi history and state, including cancellation results. This prevents an older in-memory browser-tool handoff replay from reopening a confirmation after it was stopped. Its Runtime peer is pinned to `1.81.0`; the base adapter entry remains independent of Runtime.
+
 One trusted scope/thread pair owns one Pi session. Ordinary runs accept one new text user message. Input IDs are deduplicated, previously completed browser history is not re-imported, and Pi controls its own model-context compaction.
 
-Pi's JSONL session is the durable conversation source. A small adapter metadata file preserves client IDs, state and frontend result receipts. Completed history survives a single-instance restart; `history()` projects it into AG-UI messages. An unfinished operation after process loss is marked interrupted; the adapter does not automatically replay side effects or restore a JavaScript Promise from a previous process. A subsequent new user message can start a new task.
+Pi's JSONL session is the durable conversation source. A small adapter metadata file preserves client IDs, state and frontend result receipts. Completed history survives a single-instance restart; `history()` projects it into AG-UI messages. An unfinished operation after process loss is marked interrupted; the adapter does not automatically replay side effects or restore a JavaScript Promise from a previous process. Orphaned tool calls receive stable, explicit interrupted results in the UI projection, so browser confirmation controls do not reopen after process loss. Those receipts are adapter metadata; they do not fabricate a successful tool execution or modify Pi's native transcript. A subsequent new user message can start a new task.
 
 Idle sessions are evicted without deleting their history. Live tasks and browser waits are not evicted. `pruneIdle()` is exposed for explicit host lifecycle management, and the store's unreferenced timer also performs idle cleanup. Call `dispose()` on shutdown.
 

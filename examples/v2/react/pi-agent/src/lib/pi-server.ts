@@ -1,10 +1,10 @@
 import { resolve } from "node:path";
 import { Type } from "typebox";
 import { PiAgent, PiSessionStore } from "@copilotkit/pi-agent";
+import { PiAgentRunner } from "@copilotkit/pi-agent/runtime";
 import {
   CopilotRuntime,
   createCopilotRuntimeHandler,
-  InMemoryAgentRunner,
 } from "@copilotkit/runtime/v2";
 import {
   createVerificationStream,
@@ -60,7 +60,7 @@ function createServer() {
   });
   const runtime = new CopilotRuntime({
     agents: { pi: new PiAgent({ store, agentId: "pi" }) },
-    runner: new InMemoryAgentRunner(),
+    runner: new PiAgentRunner({ store, agentId: "pi" }),
   });
   const handler = createCopilotRuntimeHandler({
     runtime,

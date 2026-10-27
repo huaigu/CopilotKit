@@ -19,7 +19,12 @@ import {
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
 import { z } from "zod";
-import { PiAgent, PiSessionStore } from "../src/index.js";
+import { Type } from "typebox";
+import {
+  PiAgent,
+  PiSessionStore,
+  type PiSessionStoreOptions,
+} from "../src/index.js";
 import { PiAgentRunner } from "../src/pi-agent-runner.js";
 import { fixtureModel, scriptedStream } from "./fixture.js";
 
@@ -45,7 +50,11 @@ async function close(server: Server): Promise<void> {
 }
 
 /** Real HTTP transport and published Runtime, not a direct adapter invocation. */
-async function host(root: string, streamFn: StreamFn) {
+async function host(
+  root: string,
+  streamFn: StreamFn,
+  options: Partial<PiSessionStoreOptions> = {},
+) {
   const store = new PiSessionStore({
     cwd: root,
     sessionDir: join(root, "sessions"),
@@ -53,6 +62,7 @@ async function host(root: string, streamFn: StreamFn) {
     apiKey: "deterministic-fixture-key",
     streamFn,
     frontendToolTimeoutMs: 5_000,
+    ...options,
   });
   const runtime = new CopilotRuntime({
     agents: { pi: new PiAgent({ store, agentId: "pi" }) },
@@ -236,6 +246,162 @@ describe("Pi through the CopilotKit Runtime and HTTP clients", () => {
       );
     },
   );
+
+  it("resumes browser tools in a sequential Pi tool batch without exposing later calls early", async () => {
+    const requests: Parameters<StreamFn>[1][] = [];
+    const backend = vi.fn(async () => ({
+      content: [{ type: "text" as const, text: "Backend ready" }],
+      details: {},
+    }));
+    const app = await host(
+      await workspace(),
+      scriptedStream((context, index) => {
+        requests.push(structuredClone(context));
+        return index === 0
+          ? {
+              tools: [
+                { id: "ordered-backend", name: "prepare_goal", arguments: {} },
+                {
+                  id: "ordered-browser-1",
+                  name: "confirm_goal",
+                  arguments: { goal: 7 },
+                },
+                {
+                  id: "ordered-browser-2",
+                  name: "confirm_goal",
+                  arguments: { goal: 8 },
+                },
+              ],
+            }
+          : "Both browser steps completed in Pi order.";
+      }),
+      {
+        tools: [
+          {
+            name: "prepare_goal",
+            label: "Prepare goal",
+            description: "Prepare the workflow before browser confirmation.",
+            parameters: Type.Object({}),
+            executionMode: "sequential",
+            execute: backend,
+          },
+        ],
+      },
+    );
+    const client = app.client();
+    const core = new CopilotKitCore({
+      agents__unsafe_dev_only: { pi: client },
+    });
+    const goals: number[] = [];
+    const approve = vi.fn(async ({ goal }: { goal: number }) => {
+      expect(
+        (await app.store.history(client.threadId!)).pending.map(
+          (call) => call.args,
+        ),
+      ).toEqual([{ goal }]);
+      goals.push(goal);
+      return { approved: true, goal };
+    });
+    core.addTool({
+      name: frontendTool.name,
+      description: frontendTool.description,
+      parameters: z.object({ goal: z.number().int() }),
+      type: "human-in-the-loop",
+      handler: approve,
+      followUp: true,
+    });
+    client.addMessage(user("Prepare, then confirm goals 7 and 8 in order."));
+    await core.runAgent({ agent: client });
+    expect(backend).toHaveBeenCalledOnce();
+    expect(approve).toHaveBeenCalledTimes(2);
+    expect(goals).toEqual([7, 8]);
+    expect(requests).toHaveLength(2);
+    expect(client.messages.at(-1)?.content).toBe(
+      "Both browser steps completed in Pi order.",
+    );
+    expect((await app.store.history(client.threadId!)).pending).toEqual([]);
+  });
+
+  it("closes browser calls not reached by a stopped sequential Pi batch", async () => {
+    const app = await host(
+      await workspace(),
+      scriptedStream([
+        {
+          tools: [
+            { id: "stop-backend", name: "prepare_goal", arguments: {} },
+            {
+              id: "stop-browser-1",
+              name: "confirm_goal",
+              arguments: { goal: 7 },
+            },
+            {
+              id: "stop-browser-2",
+              name: "confirm_goal",
+              arguments: { goal: 8 },
+            },
+          ],
+        },
+      ]),
+      {
+        tools: [
+          {
+            name: "prepare_goal",
+            label: "Prepare goal",
+            description: "Prepare a sequential workflow.",
+            parameters: Type.Object({}),
+            executionMode: "sequential",
+            execute: async () => ({
+              content: [{ type: "text", text: "Ready" }],
+              details: {},
+            }),
+          },
+        ],
+      },
+    );
+    const initial = app.client();
+    initial.addMessage(user("Prepare, then confirm two goals."));
+    await initial.runAgent({ tools: [frontendTool] });
+    const waiting = await app.store.history(initial.threadId!);
+    expect(waiting.pending.map((call) => call.id)).toEqual(["stop-browser-1"]);
+    expect(
+      waiting.messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.toolCalls?.some((call) => call.id === "stop-browser-2"),
+      ),
+    ).toBe(false);
+    await app.store.abort(initial.threadId!);
+    const history = await app.store.history(initial.threadId!);
+    expect(history.running).toBe(false);
+    expect(history.pending).toEqual([]);
+    expect(
+      history.messages.find(
+        (message) =>
+          message.role === "tool" && message.toolCallId === "stop-browser-2",
+      )?.content,
+    ).toContain('"interrupted":true');
+    const restored = new ProxiedCopilotRuntimeAgent({
+      agentId: "pi",
+      threadId: initial.threadId!,
+      runtimeUrl: app.baseUrl,
+      transport: "rest",
+      initialMessages: history.messages,
+    });
+    const core = new CopilotKitCore({
+      agents__unsafe_dev_only: { pi: restored },
+    });
+    const approval = vi.fn(async () => ({ approved: true }));
+    core.addTool({
+      name: frontendTool.name,
+      description: frontendTool.description,
+      parameters: z.object({ goal: z.number().int() }),
+      type: "human-in-the-loop",
+      handler: approval,
+      followUp: true,
+    });
+    await core.connectAgent({ agent: restored });
+    expect(approval).not.toHaveBeenCalled();
+  });
 
   it("rejects a tool result from another thread and makes an identical result replay a no-op", async () => {
     const requests: Parameters<StreamFn>[1][] = [];

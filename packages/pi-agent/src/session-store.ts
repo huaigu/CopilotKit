@@ -61,6 +61,7 @@ interface Thread {
   meta: Metadata;
   bridge: FrontendToolBridge;
   catalog: string;
+  frontendNames: Set<string>;
   channel?: Channel;
   task?: Promise<void>;
   unsubscribe: () => void;
@@ -193,6 +194,33 @@ export class PiSessionStore {
     t.channel = undefined;
   }
   private readonly threadIds = new Map<string, string>();
+  private closeInterruptedTools(manager: SessionManager, meta: Metadata) {
+    // A stopped or lost task can leave tool calls that Pi never reached. Keep
+    // their UI closure receipts separate from the native transcript; provider
+    // normalization owns model context repair on a future prompt.
+    const messages = manager
+      .getBranch()
+      .flatMap((entry) =>
+        entry.type === "message" ? [entry.message as any] : [],
+      );
+    const resolved = new Set(
+      messages
+        .filter((message) => message.role === "toolResult")
+        .map((message) => message.toolCallId),
+    );
+    const orphaned = messages
+      .filter((message) => message.role === "assistant")
+      .flatMap((message) =>
+        (message.content ?? [])
+          .filter(
+            (part: any) => part.type === "toolCall" && !resolved.has(part.id),
+          )
+          .map((part: any) => part.id as string),
+      );
+    meta.interruptedTools = [
+      ...new Set([...(meta.interruptedTools ?? []), ...orphaned]),
+    ];
+  }
   private async make(
     threadId: string,
     scope: string,
@@ -226,33 +254,7 @@ export class PiSessionStore {
         manager = SessionManager.create(this.options.cwd, dir);
       }
     } else manager = SessionManager.create(this.options.cwd, dir);
-    if (meta.interrupted) {
-      // A loaded session has no surviving Pi Promise. Keep UI closure receipts
-      // separate from the native transcript; provider normalization owns model
-      // context repair on a future prompt.
-      const messages = manager
-        .getBranch()
-        .flatMap((entry) =>
-          entry.type === "message" ? [entry.message as any] : [],
-        );
-      const resolved = new Set(
-        messages
-          .filter((message) => message.role === "toolResult")
-          .map((message) => message.toolCallId),
-      );
-      const orphaned = messages
-        .filter((message) => message.role === "assistant")
-        .flatMap((message) =>
-          (message.content ?? [])
-            .filter(
-              (part: any) => part.type === "toolCall" && !resolved.has(part.id),
-            )
-            .map((part: any) => part.id as string),
-        );
-      meta.interruptedTools = [
-        ...new Set([...(meta.interruptedTools ?? []), ...orphaned]),
-      ];
-    }
+    if (meta.interrupted) this.closeInterruptedTools(manager, meta);
     const settings = SettingsManager.inMemory({
       compaction: { enabled: true },
       retry: { enabled: false },
@@ -297,7 +299,8 @@ export class PiSessionStore {
     let t: Thread;
     const bridge = new FrontendToolBridge({
       timeoutMs: this.options.frontendToolTimeoutMs ?? 300000,
-      onCall: () => {
+      onCall: (call) => {
+        this.emitToolCall(t, { ...call, arguments: call.args });
         void this.save(t)
           .then(() => this.finish(t, true))
           .catch((error) => {
@@ -395,6 +398,7 @@ export class PiSessionStore {
       meta,
       bridge,
       catalog: JSON.stringify(tools),
+      frontendNames: new Set(tools.map((tool) => tool.name)),
       unsubscribe: () => {},
       lastUsed: Date.now(),
       textOpen: false,
@@ -445,21 +449,36 @@ export class PiSessionStore {
         messages.push({ id, role: "user", content: textContent(m) });
       if (m.role === "assistant") {
         const calls = (m.content ?? [])
-          .filter((p: any) => p.type === "toolCall")
+          .filter(
+            (p: any) =>
+              p.type === "toolCall" &&
+              !(
+                t.task &&
+                t.frontendNames.has(p.name) &&
+                !t.sentTools.has(p.id) &&
+                !resolved.has(p.id) &&
+                !interrupted.has(p.id)
+              ),
+          )
           .map((p: any) => ({
             id: p.id,
             type: "function" as const,
             function: { name: p.name, arguments: JSON.stringify(p.arguments) },
           }));
         const text = textContent(m);
-        if (text || calls.length)
+        if (text)
           messages.push({
             id,
             role: "assistant",
             content: text,
-            ...(calls.length ? { toolCalls: calls } : {}),
           });
         for (const call of calls) {
+          messages.push({
+            id: `${id}:tool:${call.id}`,
+            role: "assistant",
+            content: "",
+            toolCalls: [call],
+          });
           if (interrupted.has(call.id) && !resolved.has(call.id))
             messages.push({
               id: `${t.key.slice(0, 12)}:${call.id}:interrupted`,
@@ -482,6 +501,30 @@ export class PiSessionStore {
         });
     }
     return messages;
+  }
+  private emitToolCall(
+    t: Thread,
+    call: { id: string; name: string; arguments: unknown },
+  ) {
+    if (t.sentTools.has(call.id)) return;
+    t.sentTools.add(call.id);
+    this.emit(t, {
+      type: "TOOL_CALL_START",
+      toolCallId: call.id,
+      toolCallName: call.name,
+      // Core detects a new handoff through new message IDs. A later browser
+      // call in the same Pi message must not append to an already handled card.
+      parentMessageId: `${t.currentId}:tool:${call.id}`,
+    } as BaseEvent);
+    this.emit(t, {
+      type: "TOOL_CALL_ARGS",
+      toolCallId: call.id,
+      delta: JSON.stringify(call.arguments),
+    } as BaseEvent);
+    this.emit(t, {
+      type: "TOOL_CALL_END",
+      toolCallId: call.id,
+    } as BaseEvent);
   }
   private onEvent(t: Thread, event: any) {
     if (event.type === "message_start" && event.message.role === "assistant") {
@@ -538,23 +581,7 @@ export class PiSessionStore {
         for (const call of m.content.filter(
           (p: any) => p.type === "toolCall",
         )) {
-          if (t.sentTools.has(call.id)) continue;
-          t.sentTools.add(call.id);
-          this.emit(t, {
-            type: "TOOL_CALL_START",
-            toolCallId: call.id,
-            toolCallName: call.name,
-            parentMessageId: t.currentId,
-          } as BaseEvent);
-          this.emit(t, {
-            type: "TOOL_CALL_ARGS",
-            toolCallId: call.id,
-            delta: JSON.stringify(call.arguments),
-          } as BaseEvent);
-          this.emit(t, {
-            type: "TOOL_CALL_END",
-            toolCallId: call.id,
-          } as BaseEvent);
+          if (!t.frontendNames.has(call.name)) this.emitToolCall(t, call);
         }
         if (m.stopReason === "error")
           t.failure = m.errorMessage ?? "Pi model request failed";
@@ -733,6 +760,8 @@ export class PiSessionStore {
         t.meta.interrupted = true;
         t.failure = error?.message ?? "Pi run failed";
       } finally {
+        if (t.meta.interrupted)
+          this.closeInterruptedTools(t.session.sessionManager, t.meta);
         this.emit(t, {
           type: "MESSAGES_SNAPSHOT",
           messages: this.project(t),

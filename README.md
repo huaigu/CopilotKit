@@ -21,6 +21,12 @@ Add **CopilotKit Intelligence** when it goes to production: rich threads that pe
 
 </div>
 
+## 本 Fork 的更新
+
+本分支新增 **Pi Agent 的 TypeScript 接入与中英文 React 示例**，无需 Python／FastAPI 服务。真实 LLM 联调尚未完成。
+
+新增功能、启动方法及验证状态见 **[本 Fork 更新说明](./FORK_CHANGES.md)**。
+
 [![Bring Your Own Agent. Any Channel. — CopilotKit and AG-UI connect any agent framework to Slack, Microsoft Teams, Discord, and WhatsApp, with more channels on the roadmap.](assets/bring-your-own-agent-any-channel.png)](https://go.copilotkit.ai/copilotkit-docs)
 
 <div align="center" style="display:flex;justify-content:start;gap:16px;height:20px;margin: 0;">

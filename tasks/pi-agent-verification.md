@@ -22,7 +22,7 @@
 | 适配包测试     | 33 项通过 | 真实 Pi SDK + 确定性 provider；包含 12 项真实 Runtime HTTP / CopilotKit Core 集成测试                             |
 | 适配包类型检查 | 通过      | Nx `check-types`                                                                                                  |
 | 适配包构建     | 通过      | Nx `build`                                                                                                        |
-| 相关 Core 回归 | 17 项通过 | 前端工具占位、并行工具顺序、工具执行中取消；按三个现有测试文件直接运行 Vitest                                     |
+| 相关 Core 回归 | 16 项通过 | 前端工具占位、并行工具顺序、工具执行中取消；按三个现有测试文件直接运行 Vitest                                     |
 | 新示例类型检查 | 通过      | Nx `pi-agent-example:check-types`                                                                                 |
 | 锁文件         | 通过      | pnpm `10.33.4` 的 frozen lockfile 校验；保留所有已有 importer、package、snapshot 的内容，仅新增两个项目及所需依赖 |
 | 浏览器验收     | 7 项通过  | Playwright 在生产构建上验证双语、工具、确认／拒绝、状态、Skill、刷新与停止                                        |
